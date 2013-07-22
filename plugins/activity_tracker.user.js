@@ -115,6 +115,7 @@ function setup() {
     '#activity-tracker .team-RESISTANCE td { color: #0088FF; background-color: #071c3b;}' +
     '#activity-tracker .team-ALIENS:nth-child(2n) td { background-color: #073203; }' +
     '#activity-tracker .team-RESISTANCE:nth-child(2n) td { background-color: #031931; }' +
+    '#activity-tracker input { height: auto; }' +
     '</style>'
   );
 }

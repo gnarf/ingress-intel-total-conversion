@@ -2,7 +2,7 @@
 // @id             iitc-plugin-activity-tracker@breunigs
 // @name           IITC plugin: activity tracker
 // @category       Info
-// @version        0.0.1.@@DATETIMEVERSION@@
+// @version        0.0.2.@@DATETIMEVERSION@@
 // @namespace      https://github.com/gnarf37/ingress-intel-total-conversion
 // @updateURL      @@UPDATEURL@@
 // @downloadURL    @@DOWNLOADURL@@
@@ -20,7 +20,7 @@
 
 // use own namespace for plugin
 var activityTracker = window.plugin.activityTracker = function() {};
-
+var bounds;
 var trackerUI = $('<div id="activity-tracker">').dialog({
   autoOpen: false,
   width: 'auto',
@@ -33,6 +33,9 @@ dialog.find('button').addClass('ui-dialog-titlebar-button');
 
 var dataCache = {};
 var elemCache = {};
+
+var filterCheck = $('<input type="checkbox">').click(scheduleUpdate);
+$('<label>Filter to map bounds</label>').prepend(filterCheck).appendTo(trackerUI);
 
 trackerUI.append('<table><thead><tbody></table>');
 var thead = trackerUI.find('thead');
@@ -83,39 +86,10 @@ function logEvent(event) {
   scheduleUpdate();
 }
 
-function markupParser(parsed, markup) {
-  if (!parsed) {
-    return;
-  }
-  var type = markup[0];
-  var data = markup[1];
-  if (type === 'PLAYER') {
-    parsed.pguid = data.guid;
-    parsed.pteam = data.team;
-  } else if (type === 'PORTAL') {
-    // only store the first portal in a message
-    if (!parsed.lat) {
-      $.extend(parsed, data);
-    }
-  } else if (type === 'TEXT') {
-    var level = rlevel.exec(data.plain);
-    if (level) {
-      parsed.resLevel = +level[1];
-    }
-    if (!parsed.type) {
-      parsed.type = getTypeFromText(data.plain);
-    }
-  }
-  return parsed;
-}
-
 function onPublicChat(data) {
   // reducing the data we want out of the public chat
   $.each(data.raw.result, function(index, json) {
-    var parsed = json[2].plext.markup.reduce(markupParser, {
-      chatguid: json[0],
-      timestamp: json[1]
-    });
+    var parsed = json[2].plext.markup.reduce(PortalEvent.parseMarkup, new PortalEvent(json));
     if (parsed.type && parsed.pguid && parsed.latE6) {
       logEvent(parsed);
     }
@@ -131,7 +105,10 @@ function setup() {
   $('<a title="Show Activity Tracker">ACT</a>')
     .appendTo('#toolbox')
     .click(trackerUI.dialog.bind(trackerUI, 'open'));
+
   addHook('publicChatDataAvailable', onPublicChat);
+
+  map.on('moveend', scheduleUpdate);
 
   $('head').append('<style>' +
     '#activity-tracker .team-ALIENS td { color: #03DC03; background-color: #0d3d06;}' +
@@ -143,6 +120,7 @@ function setup() {
 }
 
 function update() {
+  bounds = filterCheck.is(':checked') ? map.getBounds() : null;
   var maxt = 0, mint = Date.now();
   tbody.find('tr').filter(function() {
     return !dataCache[this.dataset.pguid];
@@ -150,6 +128,9 @@ function update() {
   $.map(dataCache, updatePlayer).sort(function(a, b) {
     return b.score - a.score;
   }).forEach(function(sum) {
+    if (!sum.total) {
+      return sum.elem.detach();
+    }
     maxt = Math.max(maxt, sum.maxt);
     mint = Math.min(mint, sum.mint);
     tbody.append(sum.elem);
@@ -168,6 +149,11 @@ function Summary() {
 }
 
 Summary.parse = function(sum, event) {
+  if (bounds && !bounds.contains(event.getLatLng())) {
+    return sum;
+  }
+
+  sum.add('total');
   sum.maxt = Math.max(sum.maxt || 0, event.timestamp);
   sum.mint = Math.min(sum.mint || Date.now(), event.timestamp);
 
@@ -203,6 +189,40 @@ Summary.prototype.renderTo = function(elem) {
   return this;
 };
 
+function PortalEvent(json) {
+  this.chatguid = json[0];
+  this.timestamp = json[1];
+}
+
+PortalEvent.parseMarkup = function (event, markup) {
+  if (!event) {
+    return;
+  }
+  var type = markup[0];
+  var data = markup[1];
+  if (type === 'PLAYER') {
+    event.pguid = data.guid;
+    event.pteam = data.team;
+  } else if (type === 'PORTAL') {
+    // only store the first portal in a message
+    if (!event.lat) {
+      $.extend(event, data);
+    }
+  } else if (type === 'TEXT') {
+    var level = rlevel.exec(data.plain);
+    if (level) {
+      event.resLevel = +level[1];
+    }
+    if (!event.type) {
+      event.type = getTypeFromText(data.plain);
+    }
+  }
+  return event;
+};
+
+PortalEvent.prototype.getLatLng = function() {
+  return new L.LatLng(this.latE6 / 1e6, this.lngE6 / 1e6);
+};
 
 // PLUGIN END //////////////////////////////////////////////////////////
 

@@ -2,7 +2,7 @@
 // @id             iitc-plugin-activity-tracker@breunigs
 // @name           IITC plugin: activity tracker
 // @category       Info
-// @version        0.0.2.@@DATETIMEVERSION@@
+// @version        0.0.3.@@DATETIMEVERSION@@
 // @namespace      https://github.com/gnarf37/ingress-intel-total-conversion
 // @updateURL      @@UPDATEURL@@
 // @downloadURL    @@DOWNLOADURL@@
@@ -36,6 +36,11 @@ var elemCache = {};
 
 var filterCheck = $('<input type="checkbox">').click(scheduleUpdate);
 $('<label>Filter to map bounds</label>').prepend(filterCheck).appendTo(trackerUI);
+
+trackerUI.append(' | ');
+
+var minutesInput = $('<input class="minutes" size="3">').on('keyup keypress change', scheduleUpdate);
+$('<label>minutes</label>').prepend(minutesInput).appendTo(trackerUI);
 
 trackerUI.append('<table><thead><tbody></table>');
 var thead = trackerUI.find('thead');
@@ -120,8 +125,21 @@ function setup() {
   );
 }
 
+var state = {
+  bounds: null
+};
+
 function update() {
-  bounds = filterCheck.is(':checked') ? map.getBounds() : null;
+  state.bounds = filterCheck.is(':checked') ? map.getBounds() : null;
+  var minutes = +minutesInput.val();
+  if (minutes) {
+    var temp = new Date();
+    temp.setMinutes(temp.getMinutes() - minutes);
+    state.mintime = temp.getTime();
+  } else {
+    state.mintime = 0;
+  }
+
   var maxt = 0, mint = Date.now();
   tbody.find('tr').filter(function() {
     return !dataCache[this.dataset.pguid];
@@ -150,7 +168,11 @@ function Summary() {
 }
 
 Summary.parse = function(sum, event) {
-  if (bounds && !bounds.contains(event.getLatLng())) {
+  if (state.bounds && !state.bounds.contains(event.getLatLng())) {
+    return sum;
+  }
+
+  if (state.mintime && event.timestamp < state.mintime) {
     return sum;
   }
 

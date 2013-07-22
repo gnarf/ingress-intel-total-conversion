@@ -2,7 +2,7 @@
 // @id             iitc-plugin-activity-tracker@breunigs
 // @name           IITC plugin: activity tracker
 // @category       Info
-// @version        0.4.8.@@DATETIMEVERSION@@
+// @version        0.0.1.@@DATETIMEVERSION@@
 // @namespace      https://github.com/gnarf37/ingress-intel-total-conversion
 // @updateURL      @@UPDATEURL@@
 // @downloadURL    @@DOWNLOADURL@@
@@ -23,9 +23,6 @@ var activityTracker = window.plugin.activityTracker = function() {};
 
 var trackerUI = $('<div id="activity-tracker">').dialog({
   autoOpen: false,
-  close: function() {
-    dialog.detach();
-  },
   width: 'auto',
   title: 'Activity Tracker'
 });
@@ -77,6 +74,10 @@ function getTypeFromText(text) {
 
 function logEvent(event) {
   var playerData = dataCache[event.pguid] || (dataCache[event.pguid] = []);
+
+  if (playerData.some(function(a) { return a.chatguid === event.chatguid; })) {
+    return;
+  }
 
   playerData.push(event);
   scheduleUpdate();
@@ -154,7 +155,7 @@ function update() {
     tbody.append(sum.elem);
   });
   trackerUI.dialog('option', 'title', 'Activity Tracker - ' +
-    new Date(mint).toString() + ' - ' + new Date(maxt).toString());
+    new Date(mint).toLocaleString() + ' - ' + new Date(maxt).toLocaleString());
 }
 
 function updatePlayer(events, pguid) {

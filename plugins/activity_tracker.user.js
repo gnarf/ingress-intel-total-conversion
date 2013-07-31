@@ -31,6 +31,10 @@ var dialog = trackerUI.dialog('widget');
 dialog.addClass('ui-dialog-buttons');
 dialog.find('button').addClass('ui-dialog-titlebar-button');
 
+var bars = $("<div class='bar'><span class='res'></span><span class='enl'></span></div>")
+  .appendTo(trackerUI)
+  .find('span');
+
 var dataCache = {};
 var elemCache = {};
 
@@ -56,6 +60,11 @@ var CHAT_TRIGGERS = {
   'created a Control': 'FIELD'
 };
 
+var TEAMS = {
+  'ALIENS': 'enl',
+  'RESISTANCE': 'res'
+};
+
 var rlevel = /L(\d)/;
 var rowHtml = '<tr>' + (new Array(12)).join('<td>') + '</tr>';
 
@@ -65,7 +74,7 @@ function getPlayerRow(pguid) {
   }
   var elem = $(rowHtml);
   elem.find('td:first-child').text(getPlayerName(pguid));
-  elem.addClass('team-' + dataCache[pguid][0].pteam);
+  elem.addClass(TEAMS[dataCache[pguid][0].pteam]);
   return (elemCache[pguid] = elem);
 }
 
@@ -109,18 +118,25 @@ function scheduleUpdate() {
 function setup() {
   $('<a title="Show Activity Tracker">ACT</a>')
     .appendTo('#toolbox')
-    .click(trackerUI.dialog.bind(trackerUI, 'open'));
+    .click(function() {
+      trackerUI.dialog('open');
+      scheduleUpdate();
+    });
 
   addHook('publicChatDataAvailable', onPublicChat);
 
   map.on('moveend', scheduleUpdate);
 
   $('head').append('<style>' +
-    '#activity-tracker .team-ALIENS td { color: #03DC03; background-color: #0d3d06;}' +
-    '#activity-tracker .team-RESISTANCE td { color: #0088FF; background-color: #071c3b;}' +
-    '#activity-tracker .team-ALIENS:nth-child(2n) td { background-color: #073203; }' +
-    '#activity-tracker .team-RESISTANCE:nth-child(2n) td { background-color: #031931; }' +
+    '#activity-tracker .enl td { color: #03DC03; background-color: #083a02;}' +
+    '#activity-tracker .res td { color: #0088FF; background-color: #042439;}' +
+    '#activity-tracker .enl:nth-child(2n) td { background-color: #1b3a18; }' +
+    '#activity-tracker .res:nth-child(2n) td { background-color: #1a2c3a; }' +
     '#activity-tracker input { height: auto; }' +
+    '#activity-tracker .bar { height: 22px; width: 100%; } ' +
+    '#activity-tracker .bar span { display: block; float: left; font-weight: bold; cursor: help; height: 21px; line-height: 22px; } ' +
+    '#activity-tracker .bar span.res { background: #005684; text-align: right; }' +
+    '#activity-tracker .bar span.enl { background: #017f01; text-align: left; }' +
     '</style>'
   );
 }
@@ -130,6 +146,9 @@ var state = {
 };
 
 function update() {
+  if (!trackerUI.dialog('isOpen')) {
+    return;
+  }
   state.bounds = filterCheck.is(':checked') ? map.getBounds() : null;
   var minutes = +minutesInput.val();
   if (minutes) {
@@ -144,16 +163,26 @@ function update() {
   tbody.find('tr').filter(function() {
     return !dataCache[this.dataset.pguid];
   }).remove();
+
+  var score = {
+    enl: 0,
+    res: 0
+  };
+
   $.map(dataCache, updatePlayer).sort(function(a, b) {
     return b.score - a.score;
   }).forEach(function(sum) {
     if (!sum.total) {
       return sum.elem.detach();
     }
+    score[sum.team] += sum.score;
     maxt = Math.max(maxt, sum.maxt);
     mint = Math.min(mint, sum.mint);
     tbody.append(sum.elem);
   });
+  bars.eq(0).text(score.res).css('width', score.res * 100/(score.res+score.enl) + '%');
+  bars.eq(1).text(score.enl).css('width', score.enl * 100/(score.res+score.enl) + '%');
+
   trackerUI.dialog('option', 'title', 'Activity Tracker - ' +
     new Date(mint).toLocaleString() + ' - ' + new Date(maxt).toLocaleString());
 }
@@ -175,6 +204,8 @@ Summary.parse = function(sum, event) {
   if (state.mintime && event.timestamp < state.mintime) {
     return sum;
   }
+
+  sum.team = TEAMS[event.pteam];
 
   sum.add('total');
   sum.maxt = Math.max(sum.maxt || 0, event.timestamp);
@@ -208,6 +239,9 @@ Summary.prototype.renderTo = function(elem) {
     cells.eq(level + 1).text('+' + r + '/-' + x);
     this.score += r * level + x * level;
   }
+  this.score += this.get('CAPTURE') * 5;
+  this.score += this.get('LINK') * 3;
+  this.score += this.get('FIELD') * 9;
   cells.eq(10).text(this.score);
   return this;
 };

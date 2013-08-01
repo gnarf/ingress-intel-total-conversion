@@ -61,7 +61,7 @@ var CHAT_TRIGGERS = {
 };
 
 var TEAMS = {
-  'ALIENS': 'enl',
+  'ENLIGHTENED': 'enl',
   'RESISTANCE': 'res'
 };
 

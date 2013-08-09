@@ -50,8 +50,11 @@ trackerUI.append(' | ');
 var minutesInput = $('<input class="minutes" size="3">')
   .on('keyup keypress change', scheduleUpdate);
 
+var loadingLabel = $('<strong class="loading">LOADING</strong>');
+
 $('<label>minutes</label>')
   .prepend(minutesInput)
+  .append(loadingLabel.hide())
   .appendTo(trackerUI);
 
 trackerUI.append('<table><thead><tbody></table>');
@@ -126,6 +129,9 @@ function onPublicChat(data) {
       logEvent(parsed);
     }
   });
+  if (state.moreHistory) {
+
+  }
 }
 
 // schedule an update for the next frame
@@ -161,6 +167,8 @@ function setup() {
     '#activity-tracker .bar span { display: block; float: left; font-weight: bold; cursor: help; height: 21px; line-height: 22px; } ' +
     '#activity-tracker .bar span.res { background: #005684; text-align: right; }' +
     '#activity-tracker .bar span.enl { background: #017f01; text-align: left; }' +
+    '#activity-tracker label .loading { color: red; }' +
+    '#activity-tracker label .loading:before { content: "|"; color: white; padding: 0px 2px }' +
     '</style>'
   );
 }
@@ -168,7 +176,8 @@ function setup() {
 // hold the local state for filtering
 var state = {
   bounds: null,
-  mintime: 0
+  mintime: 0,
+  moreHistory: false
 };
 
 // render the full table because something changed
@@ -187,6 +196,7 @@ function update() {
     var temp = new Date();
     temp.setMinutes(temp.getMinutes() - minutes);
     state.mintime = temp.getTime();
+    state.moreHistory = true;
   } else {
     state.mintime = 0;
   }
@@ -235,6 +245,16 @@ function update() {
   trackerUI.dialog('option', 'title', 'Activity Tracker - ' +
     new Date(mint).toLocaleString() + ' - ' + new Date(maxt).toLocaleString());
 
+  if (state.moreHistory) {
+    clearTimeout(state.chatTimeout);
+    state.chatTimeout = setTimeout(function() {
+      console.log('ACT: Loading more chat history', Date.now());
+      chat.requestPublic(true);
+    }, 3000);
+    loadingLabel.show();
+  } else {
+    loadingLabel.hide();
+  }
 }
 
 // get a Summary for the player events and render to the element for the player
@@ -254,6 +274,7 @@ Summary.parse = function(sum, event) {
   }
 
   if (state.mintime && event.timestamp < state.mintime) {
+    state.moreHistory = false;
     return sum;
   }
 

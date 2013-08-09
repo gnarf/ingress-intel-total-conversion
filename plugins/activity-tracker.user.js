@@ -20,7 +20,7 @@
 
 // use own namespace for plugin
 var activityTracker = window.plugin.activityTracker = function() {};
-var bounds;
+
 var trackerUI = $('<div id="activity-tracker">').dialog({
   autoOpen: false,
   width: 'auto',
@@ -38,20 +38,31 @@ var bars = $("<div class='bar'><span class='res'></span><span class='enl'></span
 var dataCache = {};
 var elemCache = {};
 
-var filterCheck = $('<input type="checkbox">').click(scheduleUpdate);
-$('<label>Filter to map bounds</label>').prepend(filterCheck).appendTo(trackerUI);
+var filterCheck = $('<input type="checkbox">')
+  .on('click', scheduleUpdate);
+
+$('<label>Filter to map bounds</label>')
+  .prepend(filterCheck)
+  .appendTo(trackerUI);
 
 trackerUI.append(' | ');
 
-var minutesInput = $('<input class="minutes" size="3">').on('keyup keypress change', scheduleUpdate);
-$('<label>minutes</label>').prepend(minutesInput).appendTo(trackerUI);
+var minutesInput = $('<input class="minutes" size="3">')
+  .on('keyup keypress change', scheduleUpdate);
+
+$('<label>minutes</label>')
+  .prepend(minutesInput)
+  .appendTo(trackerUI);
 
 trackerUI.append('<table><thead><tbody></table>');
+
 var thead = trackerUI.find('thead');
 var tbody = trackerUI.find('tbody');
 
+// append header row
 thead.append('<tr><th>Player</th><th>C/L/F</th><th>R1</th><th>R2</th><th>R3</th><th>R4</th><th>R5</th><th>R6</th><th>R7</th><th>R8</th><th>score<th></tr>');
 
+// maps from a word in chat to a type of event
 var CHAT_TRIGGERS = {
   'deployed': 'DEPLOY',
   'destroyed': 'DESTROY',
@@ -60,14 +71,18 @@ var CHAT_TRIGGERS = {
   'created a Control': 'FIELD'
 };
 
+// Map the team names in the data packets to css classes
 var TEAMS = {
   'ENLIGHTENED': 'enl',
   'RESISTANCE': 'res'
 };
 
+// Pull the level out of the resonator message
 var rlevel = /L(\d)/;
+// new html to inject for a row
 var rowHtml = '<tr>' + (new Array(12)).join('<td>') + '</tr>';
 
+// get the players already created table row, or create it.
 function getPlayerRow(pguid) {
   if (elemCache[pguid]) {
     return elemCache[pguid];
@@ -78,6 +93,7 @@ function getPlayerRow(pguid) {
   return (elemCache[pguid] = elem);
 }
 
+// Figure out which of the CHAT_TRIGGERS matches and return a type;
 function getTypeFromText(text) {
   var result;
   $.each(CHAT_TRIGGERS, function(key, type) {
@@ -89,6 +105,7 @@ function getTypeFromText(text) {
   return result;
 }
 
+// store the event in the log, check for duplicates first.
 function logEvent(event) {
   var playerData = dataCache[event.pguid] || (dataCache[event.pguid] = []);
 
@@ -100,22 +117,26 @@ function logEvent(event) {
   scheduleUpdate();
 }
 
+// whenever we get new public chat messages, loop over all of the chat events
+// and look for ones we care about using the PortalEvent object
 function onPublicChat(data) {
-  // reducing the data we want out of the public chat
   $.each(data.raw.result, function(index, json) {
-    var parsed = json[2].plext.markup.reduce(PortalEvent.parseMarkup, new PortalEvent(json));
+    var parsed = new PortalEvent(json);
     if (parsed.type && parsed.pguid && parsed.latE6) {
       logEvent(parsed);
     }
   });
 }
 
+// schedule an update for the next frame
 function scheduleUpdate() {
   clearTimeout(scheduleUpdate.timeout);
   scheduleUpdate.timeout = setTimeout(update);
 }
 
+// startup method after IITC loaded
 function setup() {
+  // add link to the toolbox that opens the trackerUI dialog
   $('<a title="Show Activity Tracker">ACT</a>')
     .appendTo('#toolbox')
     .click(function() {
@@ -123,10 +144,13 @@ function setup() {
       scheduleUpdate();
     });
 
+  // we need the public chat data for the portal events
   addHook('publicChatDataAvailable', onPublicChat);
 
+  // after moving the map, we want to schedule an update
   map.on('moveend', scheduleUpdate);
 
+  // add CSS
   $('head').append('<style>' +
     '#activity-tracker .enl td { color: #03DC03; background-color: #083a02;}' +
     '#activity-tracker .res td { color: #0088FF; background-color: #042439;}' +
@@ -141,15 +165,23 @@ function setup() {
   );
 }
 
+// hold the local state for filtering
 var state = {
-  bounds: null
+  bounds: null,
+  mintime: 0
 };
 
+// render the full table because something changed
 function update() {
+  // do nothing when it is already open
   if (!trackerUI.dialog('isOpen')) {
     return;
   }
+
+  // if we want to filter to the bounds, get the map bounds and store them
   state.bounds = filterCheck.is(':checked') ? map.getBounds() : null;
+
+  // figure out the timestamp
   var minutes = +minutesInput.val();
   if (minutes) {
     var temp = new Date();
@@ -159,7 +191,10 @@ function update() {
     state.mintime = 0;
   }
 
+  // store the date range of rendered events
   var maxt = 0, mint = Date.now();
+
+  // remove any table rows not in the data cache
   tbody.find('tr').filter(function() {
     return !dataCache[this.dataset.pguid];
   }).remove();
@@ -169,33 +204,50 @@ function update() {
     res: 0
   };
 
-  $.map(dataCache, updatePlayer).sort(function(a, b) {
-    return b.score - a.score;
-  }).forEach(function(sum) {
-    if (!sum.total) {
-      return sum.elem.detach();
-    }
-    score[sum.team] += sum.score;
-    maxt = Math.max(maxt, sum.maxt);
-    mint = Math.min(mint, sum.mint);
-    tbody.append(sum.elem);
-  });
+  // call getPlayerSummary with each player in the dataCache
+  $.map(dataCache, getPlayerSummary)
+    // sort the results on the "score"
+    .sort(function(a, b) {
+      return b.score - a.score;
+    })
+    .forEach(function(sum) {
+      // remove elements without a score
+      if (!sum.total) {
+        return sum.elem.detach();
+      }
+
+      // calculate team totals
+      score[sum.team] += sum.score;
+
+      // find the date range of rendered events
+      maxt = Math.max(maxt, sum.maxt);
+      mint = Math.min(mint, sum.mint);
+
+      // append to table (in order)
+      tbody.append(sum.elem);
+    });
+
+  // update the bars width with the team totals
   bars.eq(0).text(score.res).css('width', score.res * 100/(score.res+score.enl) + '%');
   bars.eq(1).text(score.enl).css('width', score.enl * 100/(score.res+score.enl) + '%');
 
+  // show the date range of rendered events
   trackerUI.dialog('option', 'title', 'Activity Tracker - ' +
     new Date(mint).toLocaleString() + ' - ' + new Date(maxt).toLocaleString());
+
 }
 
-function updatePlayer(events, pguid) {
-  var elem = getPlayerRow(pguid);
-  var summary = events.reduce(Summary.parse, new Summary()).renderTo(elem);
-  return summary;
+// get a Summary for the player events and render to the element for the player
+function getPlayerSummary(events, pguid) {
+  return new Summary(events).renderTo(getPlayerRow(pguid));
 }
 
-function Summary() {
+// takes players chat events and creates a summary
+function Summary(events) {
+  events.reduce(Summary.parse, this)
 }
 
+// add up each event type
 Summary.parse = function(sum, event) {
   if (state.bounds && !state.bounds.contains(event.getLatLng())) {
     return sum;
@@ -219,15 +271,18 @@ Summary.parse = function(sum, event) {
   return sum;
 };
 
+// add one or more points to a summary field
 Summary.prototype.add = function(type, number) {
-  this[type] = this.get(type) + (number || 1);
+  this[type] = this.get(type) + (+number || 1);
   return this;
 };
 
+// when you want to make sure it's a number...
 Summary.prototype.get = function(type) {
-  return this[type] || 0;
+  return +this[type] || 0;
 };
 
+// render the summary to a table row
 Summary.prototype.renderTo = function(elem) {
   this.elem = elem;
   this.score = 0;
@@ -246,11 +301,16 @@ Summary.prototype.renderTo = function(elem) {
   return this;
 };
 
+// Parses and summaraizes data from chat json events
 function PortalEvent(json) {
   this.chatguid = json[0];
   this.timestamp = json[1];
+
+  // find all the data from the plext markup
+  json[2].plext.markup.reduce(PortalEvent.parseMarkup, this);
 }
 
+// parse the Markup
 PortalEvent.parseMarkup = function (event, markup) {
   if (!event) {
     return;
@@ -277,6 +337,7 @@ PortalEvent.parseMarkup = function (event, markup) {
   return event;
 };
 
+// get the real lat and lng from the event
 PortalEvent.prototype.getLatLng = function() {
   return new L.LatLng(this.latE6 / 1e6, this.lngE6 / 1e6);
 };

@@ -85,14 +85,48 @@ var rlevel = /L(\d)/;
 // new html to inject for a row
 var rowHtml = '<tr>' + (new Array(12)).join('<td>') + '</tr>';
 
+// handle click on player row
+function playerRowClick() {
+  var pguid = $(this).data('pguid');
+  activityTracker.drawLayer.clearLayers();
+
+  var last = dataCache[pguid].reduce(function(last, item) {
+    var latlng = item.getLatLng();
+    var heat = L.circle(latlng, 40, {
+      stroke: false,
+      fillColor: '#f00',
+      fillOpacity: 0.2
+    });
+    heat.addTo(activityTracker.drawLayer);
+
+    if (item.timestamp > last.timestamp) {
+      return {
+        timestamp: item.timestamp,
+        position: latlng
+      };
+    }
+    return last;
+  }, { timestamp: 0 });
+
+  if (last.position) {
+    map.setView(last.position, map.getZoom());
+  }
+
+}
+
 // get the players already created table row, or create it.
 function getPlayerRow(pguid) {
   if (elemCache[pguid]) {
     return elemCache[pguid];
   }
-  var elem = $(rowHtml);
-  elem.find('td:first-child').text(getPlayerName(pguid));
+  var elem = $(rowHtml).data('pguid', pguid);
+  var playerName = getPlayerName(pguid);
+  elem.find('td:first-child').text(playerName);
   elem.addClass(TEAMS[dataCache[pguid][0].pteam]);
+
+
+  elem.click(playerRowClick);
+
   return (elemCache[pguid] = elem);
 }
 
@@ -171,6 +205,10 @@ function setup() {
     '#activity-tracker label .loading:before { content: "|"; color: white; padding: 0px 2px }' +
     '</style>'
   );
+
+  activityTracker.drawLayer = new L.LayerGroup();
+  addLayerGroup('Activity Tracker', activityTracker.drawLayer, true);
+
 }
 
 // hold the local state for filtering

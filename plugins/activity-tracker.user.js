@@ -2,7 +2,7 @@
 // @id             iitc-plugin-activity-tracker@breunigs
 // @name           IITC plugin: activity tracker
 // @category       Info
-// @version        0.0.3.@@DATETIMEVERSION@@
+// @version        0.0.4.@@DATETIMEVERSION@@
 // @namespace      https://github.com/gnarf37/ingress-intel-total-conversion
 // @updateURL      @@UPDATEURL@@
 // @downloadURL    @@DOWNLOADURL@@
@@ -269,14 +269,16 @@ function Summary(events) {
 
 // add up each event type
 Summary.parse = function(sum, event) {
-  if (state.bounds && !state.bounds.contains(event.getLatLng())) {
-    return sum;
-  }
-
+  // the cheaper check, also make sure that the moreHistory is disabled
   if (state.mintime && event.timestamp < state.mintime) {
     state.moreHistory = false;
     return sum;
   }
+
+  if (state.bounds && !state.bounds.contains(event.getLatLng())) {
+    return sum;
+  }
+
 
   sum.team = TEAMS[event.pteam];
 
